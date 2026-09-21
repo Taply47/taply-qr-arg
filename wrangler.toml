@@ -1,3 +1,7 @@
 name = "taply-qr-arg"
 main = "src/index.js"
 compatibility_date = "2026-09-21"
+
+[[kv_namespaces]]
+binding = "QR_DB"
+id = "4f1ac9510b524d8c8a6f200bfd1405b7"
