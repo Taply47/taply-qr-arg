@@ -2,7 +2,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // /q/001 → busca el destino del QR 001
+    // QR: /q/001
     if (url.pathname.startsWith("/q/")) {
       const qr = url.pathname.split("/")[2];
 
@@ -19,6 +19,32 @@ export default {
       }
 
       return Response.redirect(destino, 302);
+    }
+
+    // Panel de administración
+    if (url.pathname === "/admin") {
+      const password = url.searchParams.get("password");
+
+      if (password !== env.ADMIN_PASSWORD) {
+        return new Response("Contraseña incorrecta", { status: 401 });
+      }
+
+      return new Response(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Taply Admin</title>
+        </head>
+        <body>
+          <h1>Taply Admin 🚀</h1>
+          <p>Panel funcionando correctamente.</p>
+        </body>
+        </html>
+      `, {
+        headers: {
+          "Content-Type": "text/html"
+        }
+      });
     }
 
     return new Response("Taply QR funcionando 🚀");
