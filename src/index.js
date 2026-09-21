@@ -22,12 +22,13 @@ export default {
     }
 
     // Panel de administración
-    if (url.pathname === "/admin") {
-      const password = url.searchParams.get("password");
-
-      if (password !== env.ADMIN_PASSWORD) {
-        return new Response("Contraseña incorrecta", { status: 401 });
-      }
+if (url.pathname === "/admin") {
+  return new Response(
+    env.ADMIN_PASSWORD
+      ? "ADMIN_PASSWORD está configurada correctamente"
+      : "ADMIN_PASSWORD NO está configurada",
+    { status: 200 }
+  );
 
       return new Response(`
         <!DOCTYPE html>
