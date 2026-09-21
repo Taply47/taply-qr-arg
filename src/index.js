@@ -2,7 +2,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // QR: /q/001
+    // QR
     if (url.pathname.startsWith("/q/")) {
       const qr = url.pathname.split("/")[2];
 
@@ -21,38 +21,65 @@ export default {
       return Response.redirect(destino, 302);
     }
 
-    // Panel de administración
+    // Panel
     if (url.pathname === "/admin") {
       return new Response(`
-        <h1>Taply Admin 🚀</h1>
+        <h1>Taply Admin</h1>
 
-        <form action="/admin/save" method="GET">
-          <label>QR:</label>
-          <input name="qr" placeholder="001" required>
-          <br><br>
+        <form action="/admin/login" method="POST">
+          <input name="password" type="password" placeholder="Contraseña" required>
+          <button>Entrar</button>
+        </form>
+      `, {
+        headers: { "Content-Type": "text/html; charset=UTF-8" }
+      });
+    }
 
-          <label>Destino:</label>
-          <input name="destino" placeholder="https://..." required>
-          <br><br>
+    // Login
+    if (url.pathname === "/admin/login" && request.method === "POST") {
+      const form = await request.formData();
+      const password = form.get("password");
+      const adminKey = await env.QR_DB.get("ADMIN_KEY");
+
+      if (password !== adminKey) {
+        return new Response("Contraseña incorrecta", { status: 401 });
+      }
+
+      return new Response(`
+        <h1>Taply Admin</h1>
+
+        <form action="/admin/save" method="POST">
+          <input type="hidden" name="password" value="${password}">
+
+          <label>QR:</label><br>
+          <input name="qr" placeholder="001" required><br><br>
+
+          <label>Destino:</label><br>
+          <input name="destino" placeholder="https://..." required><br><br>
 
           <button>Guardar</button>
         </form>
       `, {
-        headers: {
-          "Content-Type": "text/html"
-        }
+        headers: { "Content-Type": "text/html; charset=UTF-8" }
       });
     }
 
-    // Guardar QR
-    if (url.pathname === "/admin/save") {
-      const qr = url.searchParams.get("qr");
-      const destino = url.searchParams.get("destino");
+    // Guardar
+    if (url.pathname === "/admin/save" && request.method === "POST") {
+      const form = await request.formData();
+
+      const password = form.get("password");
+      const qr = form.get("qr");
+      const destino = form.get("destino");
+
+      const adminKey = await env.QR_DB.get("ADMIN_KEY");
+
+      if (password !== adminKey) {
+        return new Response("No autorizado", { status: 401 });
+      }
 
       if (!qr || !destino) {
-        return new Response("Falta el QR o el destino", {
-          status: 400
-        });
+        return new Response("Falta el QR o el destino", { status: 400 });
       }
 
       await env.QR_DB.put(qr, destino);
@@ -61,15 +88,12 @@ export default {
         <h1>✅ QR guardado</h1>
         <p>QR: ${qr}</p>
         <p>Destino: ${destino}</p>
-        <br>
-        <a href="/admin">Volver al panel</a>
+        <a href="/admin">Volver</a>
       `, {
-        headers: {
-          "Content-Type": "text/html"
-        }
+        headers: { "Content-Type": "text/html; charset=UTF-8" }
       });
     }
 
-    return new Response("Taply QR funcionando 🚀");
+    return new Response("Taply QR funcionando");
   }
 };
