@@ -3,7 +3,7 @@ export default {
     const url = new URL(request.url);
 
     // =========================
-    // QR REDIRECT
+    // QR REDIRECT + ESTADÍSTICAS
     // =========================
     if (url.pathname.startsWith("/q/")) {
       const qr = url.pathname.split("/")[2];
@@ -19,6 +19,38 @@ export default {
           status: 404
         });
       }
+
+      // Obtener estadísticas actuales
+      const statsKey = "STATS:" + qr;
+      let stats = await env.QR_DB.get(statsKey, "json");
+
+      if (!stats) {
+        stats = {
+          scans: 0,
+          lastScan: null,
+          lastDevice: null,
+          lastIP: null
+        };
+      }
+
+      // Datos del visitante
+      const userAgent = request.headers.get("User-Agent") || "Desconocido";
+      const ip =
+        request.headers.get("CF-Connecting-IP") ||
+        request.headers.get("X-Forwarded-For") ||
+        "Desconocida";
+
+      // Detectar dispositivo de forma simple
+      const device = getDeviceName(userAgent);
+
+      // Actualizar estadísticas
+      stats.scans += 1;
+      stats.lastScan = Date.now();
+      stats.lastDevice = device;
+      stats.lastIP = ip;
+
+      // Guardar estadísticas
+      await env.QR_DB.put(statsKey, JSON.stringify(stats));
 
       return Response.redirect(destino, 302);
     }
@@ -296,36 +328,157 @@ required
         return new Response("No autorizado", { status: 401 });
       }
 
+      if (!qr) {
+        return new Response("QR no especificado", { status: 400 });
+      }
+
       const destino = await env.QR_DB.get(qr);
+
+      // Obtener estadísticas
+      const statsKey = "STATS:" + qr;
+      const stats = await env.QR_DB.get(statsKey, "json");
+
+      const scans = stats?.scans || 0;
+      const lastScan = stats?.lastScan || null;
+      const lastDevice = stats?.lastDevice || "Todavía no hay datos";
+      const lastIP = stats?.lastIP || "Todavía no hay datos";
+
+      let tiempoUltimo = "Nunca";
+
+      if (lastScan) {
+        tiempoUltimo = timeAgo(lastScan);
+      }
 
       return new Response(`
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Consulta QR</title>
+
+<title>Consulta QR ${escapeHtml(qr)}</title>
+
 <style>
-body{font-family:Arial;padding:20px;background:#f4f4f5}
-.box{max-width:600px;margin:auto;background:white;padding:25px;border-radius:18px}
-.url{background:#eee;padding:15px;border-radius:10px;word-break:break-all}
-a{color:#111}
+* {
+  box-sizing:border-box;
+}
+
+body {
+  font-family:Arial,sans-serif;
+  padding:20px;
+  background:#f4f4f5;
+  margin:0;
+  color:#111;
+}
+
+.box {
+  max-width:600px;
+  margin:auto;
+  background:white;
+  padding:25px;
+  border-radius:18px;
+  box-shadow:0 4px 20px #0001;
+}
+
+h1 {
+  margin-top:0;
+}
+
+.info {
+  margin-top:15px;
+  padding:16px;
+  background:#f1f1f1;
+  border-radius:12px;
+}
+
+.label {
+  font-size:13px;
+  color:#666;
+  margin-bottom:5px;
+}
+
+.value {
+  font-size:17px;
+  font-weight:bold;
+  word-break:break-word;
+}
+
+.url {
+  font-size:15px;
+  font-weight:normal;
+}
+
+.item {
+  margin-bottom:18px;
+}
+
+.item:last-child {
+  margin-bottom:0;
+}
+
+a {
+  color:#111;
+}
+
+.back {
+  display:block;
+  margin-top:20px;
+  text-align:center;
+}
 </style>
 </head>
+
 <body>
+
 <div class="box">
-<h1>QR ${escapeHtml(qr)}</h1>
+
+<h1>🔎 QR ${escapeHtml(qr)}</h1>
 
 ${
   destino
-    ? `<p>Actualmente apunta a:</p>
-       <div class="url">${escapeHtml(destino)}</div>`
-    : `<p>❌ Este QR todavía no está configurado.</p>`
+    ? `
+<div class="info">
+
+<div class="item">
+<div class="label">🔗 Página vinculada</div>
+<div class="value url">${escapeHtml(destino)}</div>
+</div>
+
+<div class="item">
+<div class="label">📊 Escaneos</div>
+<div class="value">${scans}</div>
+</div>
+
+<div class="item">
+<div class="label">🕐 Último escaneo</div>
+<div class="value">${escapeHtml(tiempoUltimo)}</div>
+</div>
+
+<div class="item">
+<div class="label">📱 Dispositivo</div>
+<div class="value">${escapeHtml(lastDevice)}</div>
+</div>
+
+<div class="item">
+<div class="label">🌐 IP</div>
+<div class="value">${escapeHtml(lastIP)}</div>
+</div>
+
+</div>
+`
+    : `
+<div class="info">
+<p>❌ Este QR todavía no está configurado.</p>
+</div>
+`
 }
 
-<br>
-<a href="/admin/panel?key=${encodeURIComponent(key)}">← Volver al panel</a>
+<a class="back" href="/admin/panel?key=${encodeURIComponent(key)}">
+← Volver al panel
+</a>
+
 </div>
+
 </body>
 </html>
 `, {
@@ -411,6 +564,7 @@ body{font-family:Arial;padding:20px;background:#f4f4f5}
 
       for (let i = from; i <= to; i++) {
         const id = String(i).padStart(3, "0");
+
         const qrUrl =
           url.origin + "/q/" + id;
 
@@ -537,7 +691,117 @@ ${cards}
 };
 
 
-// Evita que alguien pueda inyectar HTML en el panel
+// =========================
+// DETECTAR DISPOSITIVO
+// =========================
+function getDeviceName(userAgent) {
+  const ua = userAgent.toLowerCase();
+
+  if (ua.includes("iphone")) {
+    if (ua.includes("crios")) {
+      return "iPhone — Chrome";
+    }
+
+    if (ua.includes("fxios")) {
+      return "iPhone — Firefox";
+    }
+
+    return "iPhone — Safari";
+  }
+
+  if (ua.includes("ipad")) {
+    return "iPad";
+  }
+
+  if (ua.includes("android")) {
+    if (ua.includes("chrome")) {
+      return "Android — Chrome";
+    }
+
+    if (ua.includes("firefox")) {
+      return "Android — Firefox";
+    }
+
+    return "Android";
+  }
+
+  if (ua.includes("windows")) {
+    if (ua.includes("edg")) {
+      return "Windows — Edge";
+    }
+
+    if (ua.includes("chrome")) {
+      return "Windows — Chrome";
+    }
+
+    if (ua.includes("firefox")) {
+      return "Windows — Firefox";
+    }
+
+    return "Windows";
+  }
+
+  if (ua.includes("mac os")) {
+    if (ua.includes("chrome")) {
+      return "Mac — Chrome";
+    }
+
+    if (ua.includes("safari")) {
+      return "Mac — Safari";
+    }
+
+    return "Mac";
+  }
+
+  if (ua.includes("linux")) {
+    return "Linux";
+  }
+
+  return "Dispositivo desconocido";
+}
+
+
+// =========================
+// TIEMPO DESDE EL ÚLTIMO ESCANEO
+// =========================
+function timeAgo(timestamp) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+
+  if (seconds < 10) {
+    return "Hace unos segundos";
+  }
+
+  if (seconds < 60) {
+    return "Hace " + seconds + " segundos";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) {
+    return "Hace " + minutes + (minutes === 1 ? " minuto" : " minutos");
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return "Hace " + hours + (hours === 1 ? " hora" : " horas");
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 30) {
+    return "Hace " + days + (days === 1 ? " día" : " días");
+  }
+
+  const months = Math.floor(days / 30);
+
+  return "Hace " + months + (months === 1 ? " mes" : " meses");
+}
+
+
+// =========================
+// EVITA INYECCIÓN HTML
+// =========================
 function escapeHtml(text) {
   return String(text)
     .replaceAll("&", "&amp;")
